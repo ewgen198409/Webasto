@@ -125,6 +125,7 @@ int water_overheat = 150; // Температура перегрева воды,
 int water_warning = 110; // Температура предупреждения для воды, градусы Цельсия
 // Конфигурация душа
 
+// Для подкачки топлива из приложения
 // Добавляем глобальную переменную для состояния насоса
 bool fuelPumpingActive = false;
 unsigned long previousPumpTime = 0;
@@ -259,8 +260,8 @@ void processSerialCommands() {
         Serial.println("NO_FAIL_TO_CLEAR");
       }
     }
-    // Подкачка топлива
-    // При добавлении перестают сохраняться настрйки
+    // ======================  Подкачка топлива
+    // ===============  При добавлении перестают сохраняться настройки
     // else if (inputString == "FUEL_PUMPING") {
     //   fuelPumpingActive = !fuelPumpingActive; // Переключаем состояние
     //   if (fuelPumpingActive) {
@@ -361,6 +362,7 @@ void handleSettingsUpdate(String paramsStr) {
   }
 }   
 
+// Для подкачки топлива из приложение
 void updateFuelPumping() {
   if (fuelPumpingActive) {
     unsigned long currentTime = millis();
