@@ -125,6 +125,12 @@ int water_overheat = 150; // Температура перегрева воды,
 int water_warning = 110; // Температура предупреждения для воды, градусы Цельсия
 // Конфигурация душа
 
+// Добавляем глобальную переменную для состояния насоса
+bool fuelPumpingActive = false;
+unsigned long previousPumpTime = 0;
+const int pumpOnTime = 30;    // время включения (мс)
+const int pumpOffTime = 110;  // время выключения (мс)
+
 void setup() {
 
   lcd.init(); // Инициализация дисплея
@@ -188,7 +194,8 @@ void loop() {
   shower_void();
   webasto();
   display_data();
-  
+  updateFuelPumping(); // Добавляем управление насосом
+
   // Обработка команд от Python-приложения
   processSerialCommands();
   serialEvent();
@@ -252,9 +259,15 @@ void processSerialCommands() {
         Serial.println("NO_FAIL_TO_CLEAR");
       }
     }
+    // Подкачка топлива
+    // При добавлении перестают сохраняться настрйки
     // else if (inputString == "FUEL_PUMPING") {
-    //   if (burn_mode == 0) {
-    //     Serial.println("FUEL_PUMPING_STARTED");
+    //   fuelPumpingActive = !fuelPumpingActive; // Переключаем состояние
+    //   if (fuelPumpingActive) {
+    //     Serial.println("PUMP_STARTED");
+    //   } else {
+    //     digitalWrite(fuel_pump_pin, LOW); // Гарантированно выключаем насос
+    //     Serial.println("PUMP_STOPPED");
     //   }
     // }
     inputString = "";
@@ -347,3 +360,23 @@ void handleSettingsUpdate(String paramsStr) {
     Serial.println("SETTINGS_ERROR");
   }
 }   
+
+void updateFuelPumping() {
+  if (fuelPumpingActive) {
+    unsigned long currentTime = millis();
+    
+    if (digitalRead(fuel_pump_pin)) {
+      // Насос включен - проверяем, не пора ли выключить
+      if (currentTime - previousPumpTime >= pumpOnTime) {
+        digitalWrite(fuel_pump_pin, LOW);
+        previousPumpTime = currentTime;
+      }
+    } else {
+      // Насос выключен - проверяем, не пора ли включить
+      if (currentTime - previousPumpTime >= pumpOffTime) {
+        digitalWrite(fuel_pump_pin, HIGH);
+        previousPumpTime = currentTime;
+      }
+    }
+  }
+}
