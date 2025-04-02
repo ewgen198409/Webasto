@@ -167,7 +167,7 @@ void setup() {
   pinMode(pushup_pin, INPUT);  // вход кнопки вверх
   pinMode(pushdown_pin, INPUT);   //  вход кнопки вниз
 
-  Serial.begin(115200); // Инициализация последовательного порта
+  Serial.begin(57600); // Инициализация последовательного порта
   inputString.reserve(200);
   
     // Загрузка настроек из EEPROM
