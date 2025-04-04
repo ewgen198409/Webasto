@@ -48,7 +48,6 @@ void webasto() {
     if (ignit_fail > 2) {
       webasto_fail = 1;
       burn_mode = 3;
-      shower = 0;
       burn = 0;
     }
 
@@ -58,14 +57,11 @@ void webasto() {
       message = "Overheat";
       if (exhaust_temp < 150) {
         burn_mode = 3;
-        shower = 0;
         burn = 0;
       }
     }
 
   } else { // Если произошла серьезная ошибка, остановить все
-    shower = 0;
-    cold_shower = 0;
     burn = 0;
     ignit_fail = 0;
     message = "Off";
@@ -276,7 +272,6 @@ void webasto() {
           if (exhaust_temp < 150) {
             cooled_off = 1;
             burn = 0;
-            shower = 0;
             burn_mode = 3;
           }
         }
@@ -284,7 +279,6 @@ void webasto() {
         // Если пламя погасло
         if (exhaust_temp < 80 && exhaust_temp < exhaust_temp_sec[9]-3 && seconds >= 60) {
           burn = 0;
-          shower = 0;
           burn_mode = 3;
           message = "Running Flameout";
         }

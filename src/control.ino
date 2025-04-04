@@ -98,7 +98,6 @@ void control() {
       current_time - main_button_timer >= veryLongPressDelay) {
     if (burn_mode > 0 && burn_mode < 3) {
       burn = false;
-      shower = false;
     }
   }
 

@@ -14,10 +14,12 @@ class WebastoMonitorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Webasto Monitor")
-        
+        self.log_window = None
+        self.log_text = None
+
         # Параметры настроек по умолчанию
         self.settings_params = {
-            'pump_size': "5",
+            'pump_size': "22",
             'heater_target': "195",
             'heater_min': "190",
             'heater_overheat': "210",
@@ -44,8 +46,7 @@ class WebastoMonitorApp:
             'cycle_time': tk.StringVar(value="N/A"),
             'message': tk.StringVar(value="N/A"),
             'final_fuel': tk.StringVar(value="N/A"),
-            'current_state': tk.StringVar(value="N/A"),
-            'delayed_period': tk.StringVar(value="0")
+            'current_state': tk.StringVar(value="N/A")
         }
         
         # Флаг для остановки потока чтения
@@ -88,7 +89,7 @@ class WebastoMonitorApp:
         self.port_combobox.grid(row=0, column=1, padx=5, pady=5)
         
         ttk.Label(com_frame, text="Baudrate:").grid(row=0, column=2, padx=5, pady=5)
-        self.baud_combobox = ttk.Combobox(com_frame, values=[115200, 9600, 19200, 38400, 57600], width=8)
+        self.baud_combobox = ttk.Combobox(com_frame, values=[57600, 9600, 19200, 38400, 115200], width=8)
         self.baud_combobox.grid(row=0, column=3, padx=5, pady=5)
         self.baud_combobox.current(0)
         
@@ -122,6 +123,16 @@ class WebastoMonitorApp:
             width=13  # Увеличиваем ширину кнопок
         )
         self.fuel_pumping_button.pack(side=tk.LEFT, padx=3, pady=2)
+
+        # Add the new Log button (initially disabled)
+        self.log_button = ttk.Button(
+            func_frame,
+            text="Log",
+            command=self.open_log_window,
+            state='disabled',
+            width=13
+        )
+        self.log_button.pack(side=tk.LEFT, padx=3, pady=2)
 
         # Настройка минимальной ширины фрейма функций
         func_frame.update_idletasks()  # Обновляем геометрию
@@ -204,7 +215,7 @@ class WebastoMonitorApp:
         """Отправка команды сброса ошибки Webasto (аналог длинного нажатия 2 сек)"""
         if hasattr(self, 'ser') and self.ser.is_open:
             try:
-                self.ser.write(b'CLEAR_FAIL\n')
+                self.ser.write(b'CF\n')
                 self.log_message("Sent CLEAR_FAIL command")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to send CLEAR_FAIL command: {str(e)}")
@@ -213,7 +224,7 @@ class WebastoMonitorApp:
         """Отправка команды принудительной подкачки топлива (аналог удержания 10 сек)"""
         if hasattr(self, 'ser') and self.ser.is_open:
             try:
-                self.ser.write(b'FUEL_PUMPING\n')
+                self.ser.write(b'FP\n')
                 self.log_message("Sent FUEL_PUMPING command")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to send FUEL_PUMPING command: {str(e)}")
@@ -304,8 +315,8 @@ class WebastoMonitorApp:
         # Создаем элементы управления для каждого параметра с подсказками
         self.settings_entries = {}
         params = [
-            ("Pump Size (ml):", "pump_size", "Размер насоса (22, 30, 60). Можно корректировать по мере износа. Больше число = меньше производительность."),
-            ("Heater Target Temp (C):", "heater_target", "Целевая температура для нагревателя, градусы Цельсия"),
+            ("Pump Size (ml):", "pump_size", "Размер насоса (любое число, по умолчанию 22). Можно корректировать по мере износа. Больше число = меньше производительность."),
+            ("Heater Target Temp (C):", "heater_target", "Целевая температура для нагревателя, градусы Цельсия. При установке больше 250, установятся все значения настроек по-умочанию после перезагрузки"),
             ("Heater Min Temp (C):", "heater_min", "Минимальная температура для нагревателя, градусы Цельсия"),
             ("Heater Overheat Temp (C):", "heater_overheat", "Температура перегрева нагревателя, градусы Цельсия"),
             ("Heater Warning Temp (C):", "heater_warning", "Температура предупреждения для нагревателя, градусы Цельсия")
@@ -337,7 +348,7 @@ class WebastoMonitorApp:
         
         warning_label = ttk.Label(
             warning_frame, 
-            text="Остальные настройки лучше править в коде, сильно зависят друг от друга!!!", 
+            text="Остальные настройки лучше править в коде, сильно зависят друг от друга!!! Считывать и применять настройки когда нагреватель OFF", 
             foreground="red",
             wraplength=380,
             justify=tk.CENTER
@@ -392,7 +403,7 @@ class WebastoMonitorApp:
     def read_settings(self):
         if hasattr(self, 'ser') and self.ser.is_open:
             self.ser.write(b'GET_SETTINGS\n')
-            self.log_message("Sent GET_SETTINGS command")
+            self.log_message("Sent GET_SETINGS command")
         else:
             messagebox.showerror("Error", "Not connected to device!")
 
@@ -401,7 +412,7 @@ class WebastoMonitorApp:
             messagebox.showerror("Error", "Not connected to device!")
             return
             
-        settings_command = "SETTINGS:"
+        settings_command = "SET:"
         settings_command += ",".join(
             f"{k}={v.get()}" for k, v in self.settings_entries.items()
         )
@@ -452,9 +463,9 @@ class WebastoMonitorApp:
                     self.log_message("Device confirmed settings update")
                 elif line.startswith("SETTINGS_ERROR"):
                     self.log_message("Device reported settings error")
-                elif "State:" in line:
+                elif "St:" in line:
                     # Обработка состояния системы с преобразованием в текстовый формат
-                    state_part = line.split("State: ")[1].split()[0]
+                    state_part = line.split("St: ")[1].split()[0]
                     state_mapping = {'0': 'FULL', '1': 'MID', '2': 'LOW'}
                     display_state = state_mapping.get(state_part, state_part)
                     self.data_vars['current_state'].set(display_state)
@@ -470,17 +481,16 @@ class WebastoMonitorApp:
 
     def parse_data(self, line):
         patterns = {
-            'webasto_fail': r'Term: (\S+)',
-            'ignit_fail': r'Ign Fail #: (\S+)',
-            'exhaust_temp': r'E Tmp: (\S+)',
-            'fan_speed': r'Fan Speed %: (\S+)',
-            'fuel_hz': r'Fuel HZ (\S+)',  # Это значение теперь будет использоваться для графика
-            'fuel_need': r'Fuel Need: (\S+)',
-            'glow_left': r'Glow Left: (\S+)',
-            'cycle_time': r'Cycle Time: (\S+)',
-            'message': r'Info: (\S+)',
-            'final_fuel': r'Final fuel: (\S+)',
-            'delayed_period': r'delayed_period>(\d+)'
+            'webasto_fail': r'F: (\S+)',
+            'ignit_fail': r'IgnF#: (\S+)',
+            'exhaust_temp': r'ETmp: (\S+)',
+            'fan_speed': r'Fan%: (\S+)',
+            'fuel_hz': r'FHZ (\S+)',  # Это значение теперь будет использоваться для графика
+            'fuel_need': r'FN: (\S+)',
+            'glow_left': r'Gl: (\S+)',
+            'cycle_time': r'CyTim: (\S+)',
+            'message': r'I: (\S+)',
+            'final_fuel': r'FinalFuel: (\S+)'
         }
         
         for var_name, pattern in patterns.items():
@@ -540,6 +550,7 @@ class WebastoMonitorApp:
             self.enter_button.config(state='disabled')
             self.clear_fail_button.config(state='disabled')
             self.fuel_pumping_button.config(state='disabled')
+            self.log_button.config(state='disabled')  # Disable Log button too
         else:
             if self.connect_serial():
                 self.connect_button.config(text="Disconnect")
@@ -550,6 +561,7 @@ class WebastoMonitorApp:
                 self.enter_button.config(state='normal')
                 self.clear_fail_button.config(state='normal')
                 self.fuel_pumping_button.config(state='normal')
+                self.log_button.config(state='normal')  # Enable Log button
 
     def connect_serial(self):
         port = self.port_combobox.get()
@@ -578,16 +590,114 @@ class WebastoMonitorApp:
                     line = self.ser.readline().decode('utf-8', errors='replace').strip()
                     if line:
                         self.serial_queue.put(line)
+                        self.log_message(line)  # Log all incoming data
                 except Exception as e:
-                    self.serial_queue.put(f"Read error: {str(e)}")
+                    error_msg = f"Read error: {str(e)}"
+                    self.serial_queue.put(error_msg)
+                    self.log_message(error_msg)
                     break
 
     def log_message(self, message):
-        print(message)  # Можно заменить на вывод в GUI-лог
+        """Enhanced log_message that writes to both console and log window"""
+        print(message)  # Console output
+        
+        if self.log_text and self.log_window and self.log_window.winfo_exists():
+            self.log_text.config(state='normal')
+            self.log_text.insert(tk.END, message + "\n")
+            self.log_text.see(tk.END)
+            self.log_text.config(state='disabled')
 
     def on_closing(self):
         self.disconnect_serial()
         self.root.destroy()
+
+    def open_log_window(self):
+        if self.log_window is None or not self.log_window.winfo_exists():
+            self.log_window = tk.Toplevel(self.root)
+            self.log_window.title("Serial Port Log")
+            self.log_window.geometry(f"{self.root.winfo_width()}x{self.root.winfo_height()}")
+            
+            # Create main frame
+            main_frame = ttk.Frame(self.log_window)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            # Create text widget for log display
+            self.log_text = tk.Text(
+                main_frame,
+                wrap=tk.WORD,
+                state='disabled',
+                bg='black',
+                fg='white',
+                font=('Courier', 10)
+            )
+            self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            # Create scrollbar
+            scrollbar = ttk.Scrollbar(main_frame, command=self.log_text.yview)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            self.log_text.config(yscrollcommand=scrollbar.set)
+            
+            # Create bottom frame for entry and buttons
+            bottom_frame = ttk.Frame(main_frame)
+            bottom_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            # Entry for sending commands
+            self.log_entry = ttk.Entry(bottom_frame)
+            self.log_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+            self.log_entry.bind('<Return>', self.send_serial_command)
+            
+            # Send button
+            send_button = ttk.Button(
+                bottom_frame,
+                text="Send",
+                command=self.send_serial_command
+            )
+            send_button.pack(side=tk.LEFT, padx=5)
+            
+            # Clear button
+            clear_button = ttk.Button(
+                bottom_frame,
+                text="Clear",
+                command=self.clear_log
+            )
+            clear_button.pack(side=tk.LEFT, padx=5)
+            
+            # Configure window close behavior
+            self.log_window.protocol("WM_DELETE_WINDOW", self.close_log_window)
+        else:
+            self.log_window.lift()
+
+    def close_log_window(self):
+        if self.log_window:
+            self.log_window.destroy()
+            self.log_window = None
+
+    def clear_log(self):
+        if self.log_text:
+            self.log_text.config(state='normal')
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.config(state='disabled')
+
+    def send_serial_command(self, event=None):
+        if hasattr(self, 'ser') and self.ser.is_open and self.log_entry:
+            command = self.log_entry.get()
+            if command:
+                try:
+                    self.ser.write((command + '\n').encode())
+                    self.log_message(f">>> {command}")
+                    self.log_entry.delete(0, tk.END)
+                except Exception as e:
+                    self.log_message(f"Error sending command: {str(e)}")
+    
+    def log_message(self, message):
+        """Enhanced log_message that also writes to the log window"""
+        print(message)  # Console output
+        
+        if self.log_text and self.log_window and self.log_window.winfo_exists():
+            self.log_text.config(state='normal')
+            self.log_text.insert(tk.END, message + "\n")
+            self.log_text.see(tk.END)
+            self.log_text.config(state='disabled')
 
 if __name__ == "__main__":
     root = tk.Tk()

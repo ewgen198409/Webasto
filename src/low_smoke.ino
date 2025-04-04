@@ -28,10 +28,10 @@ byte fill6[8] = { B11111, B11111, B11111, B11111, B11111, B11111, B11111, B11111
 // Структура для хранения параметров в EEPROM
 struct Settings {
   int pump_size;
-  float heater_target;
-  float heater_min;
-  float heater_overheat;
-  float heater_warning;
+  int heater_target;
+  int heater_min;
+  int heater_overheat;
+  int heater_warning;
 };
 
 Settings settings;
@@ -86,51 +86,31 @@ String message = "Off"; // Сообщение для отправки по по�
 bool pushed; // Флаг нажатия кнопки
 bool push; // Флаг нажатия кнопки
 bool debug_glow_plug_on = 2; // Отладочный флаг для свечи накаливания
-int debug_water_percent_map = 999; // Отладочный параметр для карты процента воды
 
 // Переменные
 float fan_speed; // Скорость вентилятора, проценты
-float water_pump_speed; // Скорость водяного насоса, проценты
 float fuel_need; // Необходимый расход топлива, проценты
 int glow_time; // Время накаливания, секунды
-float water_temp; // Температура воды, градусы Цельсия
 float exhaust_temp; // Температура выхлопа, градусы Цельсия
 float exhaust_temp_sec[10]; // Массив температур выхлопа за последние 10 секунд, градусы Цельсия
-int shower_timeout; // Таймаут для душа
 int glow_left = 0; // Оставшееся время накаливания
 int last_glow_value = 0; // Последнее значение накаливания
-bool shower; // Флаг для душа
 bool burn; // Флаг для горения
 bool webasto_fail; // Флаг для сбоя Webasto
-bool cold_shower; // Флаг для холодного душа
 bool lean_burn; // Флаг для бедного горения
 int delayed_period = 0; // Период задержки
-unsigned long water_pump_started_on; // Время запуска водяного насоса
-int water_pump_started = 0; // Флаг запуска водяного насоса
 long glowing_on = 0; // Время накаливания
 int burn_mode = 0; // Режим горения
 // Переменные
 
 // Конфигурация нагревателя
-float heater_target = 195; // Целевая температура для нагревателя, градусы Цельсия
-float heater_min = 190; // Минимальная температура для нагревателя, градусы Цельсия
+int heater_target = 195; // Целевая температура для нагревателя, градусы Цельсия
+int heater_min = 190; // Минимальная температура для нагревателя, градусы Цельсия
 int heater_overheat = 210; // Температура перегрева нагревателя, градусы Цельсия
 int heater_warning = 200; // Температура предупреждения для нагревателя, градусы Цельсия
 // Конфигурация нагревателя
 
-// Конфигурация душа
-float shower_target = 100; // Целевая температура для душа, градусы Цельсия
-float shower_min = 90; // Минимальная температура для душа, градусы Цельсия
-int water_overheat = 150; // Температура перегрева воды, градусы Цельсия
-int water_warning = 110; // Температура предупреждения для воды, градусы Цельсия
-// Конфигурация душа
-
-// Для подкачки топлива из приложения
-// Добавляем глобальную переменную для состояния насоса
-bool fuelPumpingActive = false;
-unsigned long previousPumpTime = 0;
-const int pumpOnTime = 30;    // время включения (мс)
-const int pumpOffTime = 110;  // время выключения (мс)
+volatile bool settingsUpdateInProgress = false; // Флаг для блокировки logging()
 
 void setup() {
 
@@ -147,14 +127,6 @@ void setup() {
   lcd.createChar(5, fill5);
   lcd.createChar(6, fill6);
 
-
-  // // Настройка таймера 1 для fuel_pump_pin (60 Гц)
-  // TCCR1A = 0; // Сброс регистра TCCR1A
-  // TCCR1B = 0; // Сброс регистра TCCR1B
-  // TCNT1 = 0; // Сброс счетчика таймера
-  // ICR1 = 510; // Установка верхнего значения для 60 Гц (16 МГц / 256 / 60 - 1)
-  // TCCR1A |= (1 << COM1A1) | (1 << WGM11); // Настройка режима PWM, Phase and Frequency Correct
-  // TCCR1B |= (1 << WGM13) | (1 << CS12); // Установка предделителя 256 и режима WGM13
   pinMode(fuel_pump_pin, OUTPUT); // Установка пина топливного насоса как выхода
 
   // Настройка таймера 2 для glow_plug_pin (170 Гц)
@@ -175,16 +147,16 @@ void setup() {
   pinMode(pushdown_pin, INPUT);   //  вход кнопки вниз
 
   Serial.begin(57600); // Инициализация последовательного порта
-  inputString.reserve(200);
+//  inputString.reserve(94);
   
-    // Загрузка настроек из EEPROM
   EEPROM.get(0, settings);
   
   // Проверка на "первый запуск"
-  if (isnan(settings.heater_target)) {
+  if (isnan(settings.heater_target) || 
+      settings.heater_target < 150 || 
+      settings.heater_target > 250) {
     resetToDefaultSettings();
   }
-
   applySettings();
 }
 
@@ -192,10 +164,9 @@ void loop() {
   // Основной цикл работы
   temp_data();
   control();
-  shower_void();
+//  shower_void();
   webasto();
   display_data();
-  updateFuelPumping(); // Добавляем управление насосом
 
   // Обработка команд от Python-приложения
   processSerialCommands();
@@ -203,11 +174,17 @@ void loop() {
 }
 
 void resetToDefaultSettings() {
+  if (sizeof(settings) > EEPROM.length()) {
+    Serial.println("ERROR: Settings structure too large for EEPROM");
+    return;
+  }
+  
   settings.pump_size = 22;
   settings.heater_target = 195;
   settings.heater_min = 190;
   settings.heater_overheat = 210;
   settings.heater_warning = 200;
+  
   EEPROM.put(0, settings);
 }
 
@@ -233,8 +210,10 @@ void serialEvent() {
 void processSerialCommands() {
   if (stringComplete) {
     inputString.trim();
-    
-    if (inputString == "UP") {
+    if (inputString.startsWith("SET:")) {
+      handleSettingsUpdate(inputString.substring(4));
+    }
+    else if (inputString == "UP") {
       handleUpCommand();
     }
     else if (inputString == "DOWN") {
@@ -246,10 +225,11 @@ void processSerialCommands() {
     else if (inputString == "GET_SETTINGS") {
       sendCurrentSettings();
     }
-    else if (inputString.startsWith("SETTINGS:")) {
-      handleSettingsUpdate(inputString.substring(9));
+// При добавлении перестают сохраняться настройки !!!!!
+    else if (inputString == "FP") {
+      handleFuelPumpingCommand();
     }
-    else if (inputString == "CLEAR_FAIL") {
+    else if (inputString == "CF") {
       // Сброс ошибки Webasto
       if (webasto_fail) {
         webasto_fail = false;
@@ -260,17 +240,6 @@ void processSerialCommands() {
         Serial.println("NO_FAIL_TO_CLEAR");
       }
     }
-    // ======================  Подкачка топлива
-    // ===============  При добавлении перестают сохраняться настройки
-    // else if (inputString == "FUEL_PUMPING") {
-    //   fuelPumpingActive = !fuelPumpingActive; // Переключаем состояние
-    //   if (fuelPumpingActive) {
-    //     Serial.println("PUMP_STARTED");
-    //   } else {
-    //     digitalWrite(fuel_pump_pin, LOW); // Гарантированно выключаем насос
-    //     Serial.println("PUMP_STOPPED");
-    //   }
-    // }
     inputString = "";
     stringComplete = false;
   }
@@ -317,35 +286,53 @@ void sendCurrentSettings() {
 }
 
 void handleSettingsUpdate(String paramsStr) {
+  settingsUpdateInProgress = true; // Блокируем logging()
+  
+  
   int paramsFound = 0;
   while (paramsStr.length() > 0) {
     int separatorPos = paramsStr.indexOf(',');
     String param = (separatorPos == -1) ? paramsStr : paramsStr.substring(0, separatorPos);
+    param.trim(); // Удаляем пробелы вокруг параметра
     
     int eqPos = param.indexOf('=');
     if (eqPos != -1) {
       String key = param.substring(0, eqPos);
-      String value = param.substring(eqPos + 1);
+      key.trim(); // Удаляем пробелы у ключа
       
-      if (key == "pump_size") {
-        settings.pump_size = value.toInt();
-        paramsFound++;
-      }
-      else if (key == "heater_target") {
-        settings.heater_target = value.toFloat();
-        paramsFound++;
-      }
-      else if (key == "heater_min") {
-        settings.heater_min = value.toFloat();
-        paramsFound++;
-      }
-      else if (key == "heater_overheat") {
-        settings.heater_overheat = value.toFloat();
-        paramsFound++;
-      }
-      else if (key == "heater_warning") {
-        settings.heater_warning = value.toFloat();
-        paramsFound++;
+      String value = param.substring(eqPos + 1);
+      value.trim(); // Удаляем пробелы у значения
+      
+      int intValue = value.toInt();
+      if (intValue != 0 || value.equals("0")) {
+        if (key.equals("pump_size")) {
+          settings.pump_size = intValue;
+          paramsFound++;
+        }
+        else if (key.equals("heater_target")) {
+          settings.heater_target = intValue;
+          paramsFound++;
+        }
+        else if (key.equals("heater_min")) {
+          settings.heater_min = intValue;
+          paramsFound++;
+        }
+        else if (key.equals("heater_overheat")) {
+          settings.heater_overheat = intValue;
+          paramsFound++;
+        }
+        else if (key.equals("heater_warning")) {
+          settings.heater_warning = intValue;
+          paramsFound++;
+        } else {
+          Serial.print("Unknown key: ");
+          Serial.println(key);
+        }
+      } else {
+        Serial.print("Invalid value for key '");
+        Serial.print(key);
+        Serial.print("': ");
+        Serial.println(value);
       }
     }
     
@@ -357,28 +344,54 @@ void handleSettingsUpdate(String paramsStr) {
     EEPROM.put(0, settings);
     applySettings();
     Serial.println("SETTINGS_OK");
+    settingsUpdateInProgress = false; // Разблокируем logging(
   } else {
     Serial.println("SETTINGS_ERROR");
+    settingsUpdateInProgress = false; // Разблокируем logging(
   }
-}   
+}
+//
+// Обработка команды прокачки топлива (аналог удержания кнопки 10 секунд)
+void handleFuelPumpingCommand() {
+  if (burn_mode == 0) { // Только если нагреватель выключен
+    const int TOTAL_CYCLES = 200; // Общее количество циклов
+    int remaining = TOTAL_CYCLES; // Обратный отсчёт
 
-// Для подкачки топлива из приложение
-void updateFuelPumping() {
-  if (fuelPumpingActive) {
-    unsigned long currentTime = millis();
-    
-    if (digitalRead(fuel_pump_pin)) {
-      // Насос включен - проверяем, не пора ли выключить
-      if (currentTime - previousPumpTime >= pumpOnTime) {
-        digitalWrite(fuel_pump_pin, LOW);
-        previousPumpTime = currentTime;
+    // Циклическое включение/выключение топливного насоса
+    for (int count = 0; count <= TOTAL_CYCLES; count++) {
+      remaining = TOTAL_CYCLES - count;
+      
+      // Однократный вывод сообщения при начале работы
+      if (count == 1) {
+        lcd.setCursor(0, 1);
+        lcd.print("Fuel pumping");
       }
-    } else {
-      // Насос выключен - проверяем, не пора ли включить
-      if (currentTime - previousPumpTime >= pumpOffTime) {
-        digitalWrite(fuel_pump_pin, HIGH);
-        previousPumpTime = currentTime;
+      
+      // Выводим обратный отсчёт справа (каждые 5 циклов для плавности)
+      if (count % 5 == 0 || count == TOTAL_CYCLES) {
+        lcd.setCursor(13, 1);
+        if (remaining > 99) {
+          lcd.print(remaining);
+        } else if (remaining > 9) {
+          lcd.print(" ");
+          lcd.print(remaining);
+        } else {
+          lcd.print("  ");
+          lcd.print(remaining);
+        }
       }
+
+      digitalWrite(fuel_pump_pin, HIGH); // 6герц
+      delay(30);                        // 20% скважность
+      digitalWrite(fuel_pump_pin, LOW);
+      delay(110);
     }
-  }
+    
+    // Выводим начальное состояние
+    lcd.setCursor(0, 1);
+    lcd.print("Complete        ");
+    delay(500);
+    lcd.setCursor(0, 1);
+    lcd.print("OFF             ");
+  } 
 }
