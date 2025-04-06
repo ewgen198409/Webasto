@@ -42,10 +42,12 @@ void glow_plug() {
 
             // Если прошло менее 10 секунд с момента начала накала
             if (elapsed_time < 10000) {
-                int brightness = map(elapsed_time, 0, 10000, 0, 115); // Линейная интерполяция яркости | maximum ~45%
+                int brightness = map(elapsed_time, 0, 10000, 0, 461); // Линейная интерполяция яркости | maximum ~45%
+                //                                    для 328PB 115!!!
                 analogWrite(glow_plug_pin, brightness); // Постепенно увеличиваем яркость свечи
             } else {
-                analogWrite(glow_plug_pin, 115); // Устанавливаем максимальную яркость свечи
+                analogWrite(glow_plug_pin, 461); // Устанавливаем максимальную яркость свечи
+                //               для 328PB 115!!!
             }
         }
         debug_glow_plug_on = 1; // Устанавливаем отладочный флаг, что свеча горит
@@ -64,7 +66,8 @@ void glow_plug() {
             
             if (fade_time < 5000) {
                 // Плавное уменьшение яркости в течение 10 секунд
-                int brightness = map(fade_time, 0, 5000, 115, 0);
+                int brightness = map(fade_time, 0, 5000, 461, 0);
+                //                             для 328PB 115!!!
                 analogWrite(glow_plug_pin, brightness);
             } else {
                 // Завершение плавного выключения

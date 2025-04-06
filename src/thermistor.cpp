@@ -78,8 +78,9 @@ int THERMISTOR::read(void)
   uint8_t i;
   uint16_t sample;
   float average = 0;
-
-  analogReference(DEFAULT);
+  
+  // если логика МК 3,3 вольта то подключить aref r 3.3 вольта. Если 5 вольт то просто прописать analogReference(DEFAULT);
+  analogReference(EXTERNAL);
 
   // take N samples in a row, with a slight delay
   for (i=0; i< NUMSAMPLES; i++)
