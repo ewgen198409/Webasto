@@ -134,7 +134,7 @@ void setup() {
   pinMode(pushdown_pin, INPUT);   //  вход кнопки вниз
 
   Serial.begin(57600); // Инициализация последовательного порта
-//  inputString.reserve(94);
+  inputString.reserve(200);
   
   EEPROM.get(0, settings);
   
@@ -151,7 +151,6 @@ void loop() {
   // Основной цикл работы
   temp_data();
   control();
-//  shower_void();
   webasto();
   display_data();
 
