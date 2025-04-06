@@ -120,7 +120,7 @@ void webasto() {
                   fan_speed = prime_fan_speed;
               }
           }
-          glow_time = 100;
+          
           fuel_need = 0;
           message = "Clearing";
         }
@@ -135,6 +135,7 @@ void webasto() {
                   fan_speed = start_fan_speed;
               }
           }
+          glow_time = 100;
           message = "Prime";
         }
 

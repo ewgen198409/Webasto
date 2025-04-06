@@ -44,8 +44,6 @@ bool stringComplete = false;
 int fuel_pump_pin = 5; // Пин для топливного насоса
 int glow_plug_pin = 2; // Пин для свечи накаливания
 int burn_fan_pin = 9; // Пин для вентилятора горелки
-int water_pump_pin = 10; // Пин для водяного насоса
-int water_temp_pin = A1; // Пин для датчика температуры воды
 int exhaust_temp_pin = A0; // Пин для датчика температуры выхлопа
 int push_pin = 13; // Пин для кнопки
 int pushup_pin = 12; //    кнопка вверх
@@ -128,19 +126,8 @@ void setup() {
   lcd.createChar(6, fill6);
 
   pinMode(fuel_pump_pin, OUTPUT); // Установка пина топливного насоса как выхода
-
-  // Настройка таймера 2 для glow_plug_pin (170 Гц)
-  TCCR2A = 0; // Сброс регистра TCCR2A
-  TCCR2B = 0; // Сброс регистра TCCR2B
-  TCNT2 = 0; // Сброс счетчика таймера
-  OCR2A = 92; // Установка верхнего значения для 170 Гц (16 МГц / 1024 / 170 - 1)
-  TCCR2A |= (1 << COM2A1) | (1 << WGM21) | (1 << WGM20); // Настройка режима Fast PWM
-  TCCR2B |= (1 << CS22) | (1 << CS21) | (1 << CS20); // Установка предделителя 1024
   pinMode(glow_plug_pin, OUTPUT); // Установка пина свечи накаливания как выхода
-
   pinMode(burn_fan_pin, OUTPUT); // Установка пина вентилятора горелки как выхода
-  pinMode(water_pump_pin, OUTPUT); // Установка пина водяного насоса как выхода
-  pinMode(water_temp_pin, INPUT); // Установка пина датчика температуры воды как входа
   pinMode(exhaust_temp_pin, INPUT); // Установка пина датчика температуры выхлопа как входа
   pinMode(push_pin, INPUT); // Установка пина кнопки как входа
   pinMode(pushup_pin, INPUT);  // вход кнопки вверх
